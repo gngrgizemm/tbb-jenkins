@@ -1,0 +1,69 @@
+node {
+    stage ("git clone"){
+        git credentialsId: 'GITHUB', url: 'https://github.com/gngrgizemm/tbb-final.git'
+    }
+    stage ("docker build"){
+        sh 'docker build -t gngrgizemm/myflask:v${BUILD_NUMBER} .'
+    }
+    stage ("docker login"){
+        withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'DOCKERHUB', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD']]){
+        sh 'docker login -u $USERNAME -p $PASSWORD'   
+        }
+    }
+    stage ("docker push"){
+        sh 'docker push gngrgizemm/myflask:v${BUILD_NUMBER}'
+    }
+    stage ("kubernetes dev deployment"){
+        script {
+            env.DOCKER_BUILD_NUMBER="${BUILD_NUMBER}"
+        }
+        sh 'echo ${DOCKER_BUILD_NUMBER}'
+        sh 'envsubst < ./tbbdevops/mysql-deployment-dev.yaml | kubectl apply -f -'
+        sh 'envsubst < ./tbbdevops/app-deployment-dev.yaml | kubectl apply -f -'
+        sh 'kubectl apply -f ./tbbdevops/mysql-pv-dev.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-pvc-dev.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-secret-dev.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-initdb-config-dev.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-service-dev.yaml'
+        sh 'kubectl apply -f ./tbbdevops/python-service-dev.yaml'
+    }
+    stage ("kubernetes test deployment"){
+        def deployment= input(message: 'TEST DEPLOY?', ok:'ok', parameters:[booleanParam(defaultValue:true,description:'Description',name:'yes')])
+        if (deployment == true){
+        script {
+            env.DOCKER_BUILD_NUMBER="${BUILD_NUMBER}"
+        }
+        sh 'echo ${DOCKER_BUILD_NUMBER}'
+        sh 'envsubst < ./tbbdevops/mysql-deployment-test.yaml | kubectl apply -f -'
+        sh 'envsubst < ./tbbdevops/app-deployment-test.yaml | kubectl apply -f -'
+        sh 'kubectl apply -f ./tbbdevops/mysql-pv-test.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-pvc-test.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-secret-test.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-initdb-config-test.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-service-test.yaml'
+        sh 'kubectl apply -f ./tbbdevops/python-service-test.yaml'
+        } else {
+                echo "Deploy Skipped"
+        }
+    }
+    stage ("kubernetes prod deployment"){
+       
+        def deployment= input(message: 'PROD DEPLOY?', ok:'ok', parameters:[booleanParam(defaultValue:true,description:'Description',name:'yes')])
+        if (deployment == true){
+        script {
+            env.DOCKER_BUILD_NUMBER="${BUILD_NUMBER}"
+        }
+        sh 'echo ${DOCKER_BUILD_NUMBER}'
+        sh 'envsubst < ./tbbdevops/mysql-deployment-prod.yaml | kubectl apply -f -'
+        sh 'envsubst < ./tbbdevops/app-deployment-prod.yaml | kubectl apply -f -'
+        sh 'kubectl apply -f ./tbbdevops/mysql-pv-prod.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-pvc-prod.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-secret-prod.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-initdb-config-prod.yaml'
+        sh 'kubectl apply -f ./tbbdevops/mysql-service-prod.yaml'
+        sh 'kubectl apply -f ./tbbdevops/python-service-prod.yaml'
+        } else {
+            echo "Deploy Skipped"
+        }
+    }
+}
